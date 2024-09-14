@@ -147,25 +147,81 @@ trainData <- trainDF[trainIndex,]
 testData  <- trainDF[-trainIndex,]
 
 # Train the Random Forest model
-rf_model <- randomForest(gname ~ ., data = trainData, ntree = 100)
-
+rf_model100 <- randomForest(gname ~ ., data = trainData, ntree = 100)
+rf_model200 <- randomForest(gname ~ ., data = trainData, ntree = 200)
+rf_model500 <- randomForest(gname ~ ., data = trainData, ntree = 500)
 # Predict on the test data
-predictions <- predict(rf_model, newdata = testData)
+predictions100 <- predict(rf_model100, newdata = testData)
+predictions200 <- predict(rf_model200, newdata = testData)
+predictions500 <- predict(rf_model500, newdata = testData)
 
 # Evaluate the model
-conf_matrix <- confusionMatrix(predictions, testData$gname)
+conf_matrix100 <- confusionMatrix(predictions100, testData$gname)
+conf_matrix200 <- confusionMatrix(predictions200, testData$gname)
+conf_matrix500 <- confusionMatrix(predictions500, testData$gname)
 
 # Print the accuracy
-accuracy <- conf_matrix$overall['Accuracy']
-print(paste("Accuracy: ", round(accuracy * 100, 2), "%", sep = ""))
+accuracy100 <- conf_matrix100$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy100 * 100, 2), "%", sep = ""))
+
+accuracy200 <- conf_matrix200$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy200 * 100, 2), "%", sep = ""))
+
+accuracy500 <- conf_matrix500$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy500 * 100, 2), "%", sep = ""))
 
 ```
 ```{r}
-# Make the prediction on Unkownw Gname attacks
+# Make the prediction on Unknown Gname attacks
 Testprediction <- predict(rf_model, newdata = testDF)
 
-print(Testprediction)
+print(Testprediction[1:20])
 ```
+```{r}
+library(pdp)
+library(pheatmap)
+
+# Accuracies for different ntree values
+accuracies <- data.frame(
+  ntree = c(100, 200, 500),
+  accuracy = c(accuracy100, accuracy200, accuracy500)
+)
+
+# Plot the accuracies
+# Line
+ggplot(accuracies, aes(x = ntree, y = accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Model Accuracy vs. Number of Trees",
+       x = "Number of Trees (ntree)",
+       y = "Accuracy") +
+  theme_minimal()
+
+#Bar
+ggplot(accuracies, aes(x = factor(ntree), y = accuracy)) +
+  geom_bar(stat = "identity", fill = "green") +
+  labs(title = "Model Accuracy vs. Number of Trees",
+       x = "Number of Trees (ntree)",
+       y = "Accuracy") +
+  theme_minimal()
+
+
+
+## Get variable importance
+importance_values <- importance(rf_model500)
+
+## Plot variable importance
+barplot(importance_values[, 1], 
+        names.arg = rownames(importance_values), 
+        las = 2, 
+        col = "skyblue", 
+        main = "Variable Importance", 
+        ylab = "Importance Score",
+        cex.names = 0.7)
+
+# Create a partial dependence plot for a specific feature
+partialPlot(rf_model500, trainData, "iyear")
+
 ```
 
 
