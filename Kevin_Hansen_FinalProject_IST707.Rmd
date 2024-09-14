@@ -1,5 +1,5 @@
 ---
-title: "Terrorism Clustering"
+title: "Terrorism Random Forest Prediction"
 author: "Kevin Hansen"
 date: "2024-09-04"
 output: html_document
