@@ -1,0 +1,266 @@
+---
+title: "IST 707 Final Project NeuralNet"
+author: "Kent Roller"
+date: "2024-09-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#file.choose()
+```
+
+```{r}
+terror_dat<-read_csv("C:\\Users\\super\\OneDrive\\Desktop\\globalterrorismdb_shorter.csv")
+```
+
+```{r}
+library(tidyverse)
+```
+
+Filter out the SE Asia region and create a new dataset
+```{r}
+se_asia_tr<-terror_dat %>% 
+  filter(region_txt=="Southeast Asia")
+```
+
+
+Need to remove na values from data, but need to remove unneeded columns first. 
+```{r}
+se_asia_tr<-se_asia_tr[, c(2,6,7,8,9,10,11,12,13,14,27,28,29,30,31,32,33,34,37,38,39,47,48)]
+```
+
+
+Now that most rows have values and the columns with a majority NA values have been removed we can see if we can just drop the remiander without completely depleting the number of observations
+
+```{r}
+se_asia_tr_clean<-se_asia_tr %>% 
+  drop_na()
+```
+
+
+load in additional libraries for neural netowrks
+```{r}
+library(neuralnet)
+library(caret)
+```
+Convert primary variable of interest to factor
+```{r}
+se_asia_tr_clean$gname<-as.factor(se_asia_tr_clean$gname)
+```
+
+Convert other variables stored as chr to factor as a preprocessing step
+```{r}
+se_asia_tr_clean$country_txt<-as.factor(se_asia_tr_clean$country_txt)
+se_asia_tr_clean$region_txt<-as.factor(se_asia_tr_clean$region_txt)
+se_asia_tr_clean$provstate<-as.factor(se_asia_tr_clean$provstate)
+se_asia_tr_clean$city<-as.factor(se_asia_tr_clean$city)
+se_asia_tr_clean$attacktype1_txt<-as.factor(se_asia_tr_clean$attacktype1_txt)
+se_asia_tr_clean$targtype1_txt<-as.factor(se_asia_tr_clean$targtype1_txt)
+se_asia_tr_clean$targsubtype1_txt<-as.factor(se_asia_tr_clean$targsubtype1_txt)
+se_asia_tr_clean$corp1<-as.factor(se_asia_tr_clean$corp1)
+se_asia_tr_clean$motive<-as.factor(se_asia_tr_clean$motive)
+se_asia_tr_clean$weapsubtype1_txt<-as.factor(se_asia_tr_clean$weapsubtype1_txt)
+```
+
+Normalize the dataset 
+```{r}
+preproc_params<-preProcess(se_asia_tr_clean[, -which(names(se_asia_tr_clean)=='gname')], method=c("range"))
+se_asia_normalized<-predict(preproc_params, se_asia_tr_clean)
+```
+
+Remove region from the listing since it has no variation to make sure it does not have an impact on the output. This may have been the issue with the last set when trying to perform binarization 
+```{r}
+se_asia_norm<-se_asia_normalized[,-c(4,5)]
+```
+
+
+Combine with the orginal gname variable of interest
+```{r}
+se_asia_norm$gname<-se_asia_tr_clean$gname
+```
+
+Split the data into training and test sets
+```{r}
+train_index<-createDataPartition(se_asia_norm$gname, p=0.8, list=FALSE)
+train_data<-se_asia_norm[train_index,]
+test_data<-se_asia_norm[-train_index,]
+
+```
+
+
+Build the Neural Network
+```{r}
+nm_model<-neuralnet(gname~., data=train_data, hidden=c(10,5),linear.output = FALSE)
+plot(nm_model)
+```
+OK. Going to try and cast the data as dummy variables into a new dataframe and see if this will resolve the issue 
+```{r}
+dummies_model <- dummyVars(gname ~ ., data = train_data)
+train_data_numeric <- predict(dummies_model, newdata = train_data) %>%
+  as.data.frame()
+```
+
+```{r}
+str(train_data_numeric)
+```
+
+```{r}
+train_data_numeric$gname <- as.numeric(as.factor(train_data$gname))
+```
+
+
+Now attempt to reapply neural network model 
+
+```{r}
+nn_model <- neuralnet(gname ~ ., data = train_data_numeric, hidden = c(10, 5), linear.output = FALSE)
+
+plot(nm_model)
+```
+OK, I see the city names causing this issue in the data, so I am going to attempt to manually remove these two observations and then ....issues here, just going to remove city from the data
+```{r}
+se_asia_norm<-se_asia_normalized[-c(4,5,7,16,17,18)]
+```
+
+
+```{r}
+train_index<-createDataPartition(se_asia_norm$gname, p=0.8, list=FALSE)
+train_data<-se_asia_norm[train_index,]
+test_data<-se_asia_norm[-train_index,]
+```
+
+```{r}
+dummies_model <- dummyVars(gname ~ ., data = train_data)
+train_data_numeric <- predict(dummies_model, newdata = train_data) %>%
+  as.data.frame()
+```
+
+
+```{r}
+train_data_numeric$gname <- as.numeric(as.factor(train_data$gname))
+```
+
+
+
+```{r}
+nn_model <- neuralnet(gname ~ ., data = train_data_numeric, hidden = c(10, 5), linear.output = FALSE)
+
+plot(nm_model)
+```
+
+OK, and apparently I have completely broken it, so fine
+We will strip down the data to just numeric values and not convert chr to factors and attempt to run the model on those values to see what happens. 
+```{r}
+se_terror2<-se_asia_tr[-c(3,4,5,6,7,12,14,16,17,18,20,22,23)]
+```
+
+
+Ok, so what happens when we just use this as a baseline
+
+```{r}
+se_terror2$gname<-as.factor(se_terror2$gname)
+```
+
+Normalize numeric dataset
+```{r}
+preproc_params<-preProcess(se_terror2[, -which(names(se_terror2)=='gname')], method=c("range"))
+se_asia_norm2<-predict(preproc_params, se_terror2)
+```
+
+```{r}
+se_asia_norm2$gname<-se_terror2$gname
+```
+
+
+```{r}
+train_index<-createDataPartition(se_asia_norm2$gname, p=0.8, list=FALSE)
+train_data<-se_asia_norm2[train_index,]
+test_data<-se_asia_norm2[-train_index,]
+```
+
+```{r}
+train_data<-na.omit(train_data)
+test_data<-na.omit(test_data)
+```
+
+
+```{r}
+dummies_model <- dummyVars(gname ~ ., data = train_data)
+train_data_numeric <- predict(dummies_model, newdata = train_data) %>%
+  as.data.frame()
+```
+
+
+```{r}
+train_data_numeric$gname <- as.numeric(as.factor(train_data$gname))
+```
+
+
+```{r}
+nn_model <- neuralnet(gname ~ ., data = train_data_numeric, hidden = c(10, 5), linear.output = FALSE)
+
+plot(nn_model)
+```
+
+
+Now need to check the accuracy of the model
+```{r}
+nn_predictions<-compute(nn_model, test_data[,which(names(test_data)=="gname")])
+
+#Convert prediction back to factor levels 
+predicted_class<-apply(nn_predictions$net.result,1, which.max)
+
+#Make confusion matrix
+confu_matrix<-confusionMatrix(as.factor(predicted_class), test_data$gname)
+print(confu_matrix)
+```
+
+```{r}
+nn_predictions <- compute(nn_model, test_data[, -which(names(test_data) == "gname")])
+
+# Convert the predictions back to factor levels
+predicted_class <- apply(nn_predictions$net.result, 1, which.max)
+
+# Evaluate the model accuracy
+confusion_matrix <- confusionMatrix(as.factor(predicted_class), test_data$gname)
+print(confusion_matrix)
+```
+
+```{r}
+predicted_class <- factor(predicted_class, levels = levels(test_data$gname))
+```
+
+```{r}
+
+# Now create the confusion matrix
+confusion_matrix <- confusionMatrix(predicted_class, test_data$gname)
+print(confusion_matrix$overall['Accuracy'])
+```
+
+
+
+```{r}
+# Ensure that the levels of predicted_class match test_data$gname
+predicted_class <- factor(predicted_class, levels = levels(test_data$gname))
+
+# Confusion Matrix
+confusion_matrix <- confusionMatrix(predicted_class, test_data$gname)
+print(confusion_matrix$overall['Accuracy'])
+```
+
+
+```{r}
+correct_predictions <- sum(predicted_class == test_data$gname)
+total_predictions <- length(test_data$gname)
+accuracy <- correct_predictions / total_predictions
+
+# Print the accuracy
+print(paste("Overall Accuracy: ", round(accuracy * 100, 2), "%"))
+```
+
+
+
+
