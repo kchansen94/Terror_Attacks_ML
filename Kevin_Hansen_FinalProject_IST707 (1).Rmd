@@ -1,0 +1,229 @@
+---
+title: "Terrorism Random Forest Prediction"
+author: "Kevin Hansen"
+date: "2024-09-04"
+output: html_document
+---
+
+```{r}
+terror_data<-read.csv("C:\\Users\\kchan\\OneDrive\\Documents\\Applied Data Science Program\\globalterrorismdb_shorter.csv")
+terror_data<-terror_data[,c(2,7,9,10,11,12,13,16,17,25,26,27,28,29:35,37,38,39,46,47)]
+
+seAsiaDF <- terror_data[terror_data$region_txt == "Southeast Asia",]
+seAsiaDFClean <- seAsiaDF[complete.cases(seAsiaDF), ]
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+# Data Exploration of Southeast Asia Region
+
+# Visual Breakdown of Countries where the attacks happened in Southeast Asia
+ggplot(seAsiaDFClean,aes(x=country_txt))+ 
+  geom_bar(fill="gold")+
+  xlab("Country")+
+  ylab("Frequency")+
+  ggtitle("Histogram of attacked Countries")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position="none")
+
+
+# Visual Breakdown of attack types in this Region
+
+ggplot(seAsiaDFClean,aes(x=attacktype1_txt))+ 
+  geom_bar(fill="blue")+
+  xlab("Attack Type")+
+  ylab("Frequency")+
+  ggtitle("Histogram of Attack Types")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+    legend.position="none")
+
+# Frequency of Attacks by Year
+
+ggplot(seAsiaDFClean, aes(x=iyear))+
+  geom_bar(fill="red")+
+  xlab("Year")+
+  ylab("Frequency of Attacks")+
+  ggtitle("Frequency of Attacks by Year")
+  theme_classic()
+  
+# Type of Attack Frequency
+  
+ggplot(seAsiaDFClean, aes(x=targtype1_txt))+
+geom_bar(fill="darkblue")+
+ggtitle("Target Types Frequency Plot")+
+xlab("Target Types")+
+ylab("Frequency of Selection")+
+theme_classic()+
+theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+  legend.position="none")
+
+# Weapons Used during Attacks 
+
+ggplot(seAsiaDFClean, aes(x=weaptype1_txt))+
+  geom_bar(fill="gray")+
+  ggtitle("Weapon Type Frequency")+
+  xlab("Weapon Type")+
+  ylab("Frequency")+
+  theme_classic() +  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+# Responsible Party count Table
+
+gname_counts <- seAsiaDFClean %>%
+  group_by(gname) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+# Display the table
+print(gname_counts)
+```
+
+```{r}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+# K-Means Clustering Model
+
+# Data set must be numeric
+trainDF <- seAsiaDFClean[,c(1, 6, 7, 10, 11, 12, 14, 16, 20, 21, 25)]
+trainDF <- trainDF[trainDF$gname != "Unknown",]
+testDF <- trainDF %>% select(-gname)
+
+# Elbow method for optimal # of clusters
+fviz_nbclust(df_scaled, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) +
+  labs(subtitle = "Elbow method")
+
+# K-Means Model - 3 Clusters/Centers
+set.seed(42)
+kmeans_result <- kmeans(df_scaled, centers = 3, nstart = 25)
+
+# Add the cluster labels to the original dataframe
+trainDF$Cluster <- as.factor(kmeans_result$cluster)
+
+# Function to find the mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Map clusters to gname
+cluster_gname <- trainDF %>%
+  group_by(Cluster) %>%
+  summarize(gname = Mode(gname))  # Mode function to find the most frequent gname in each cluster
+
+# Assign the gname to clusters
+trainDF <- trainDF %>%
+  left_join(cluster_gname, by = "Cluster")
+
+# Visualize the clusters
+fviz_cluster(kmeans_result, data = df_scaled,
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+
+```
+```{r}
+# Load necessary libraries
+library(randomForest)
+library(caret)
+
+# Prepare your data
+trainDF <- seAsiaDFClean[,c(1, 6, 7, 10, 11, 12, 14, 16, 20, 21, 25)]
+trainDF <- trainDF[trainDF$gname != "Unknown",]
+
+# Convert gname to a factor
+trainDF$gname <- as.factor(trainDF$gname)
+
+# Split the data into training and testing sets
+set.seed(42)
+trainIndex <- createDataPartition(trainDF$gname, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+trainData <- trainDF[trainIndex,]
+testData  <- trainDF[-trainIndex,]
+
+# Train the Random Forest model
+rf_model100 <- randomForest(gname ~ ., data = trainData, ntree = 100)
+rf_model200 <- randomForest(gname ~ ., data = trainData, ntree = 200)
+rf_model500 <- randomForest(gname ~ ., data = trainData, ntree = 500)
+# Predict on the test data
+predictions100 <- predict(rf_model100, newdata = testData)
+predictions200 <- predict(rf_model200, newdata = testData)
+predictions500 <- predict(rf_model500, newdata = testData)
+
+# Evaluate the model
+conf_matrix100 <- confusionMatrix(predictions100, testData$gname)
+conf_matrix200 <- confusionMatrix(predictions200, testData$gname)
+conf_matrix500 <- confusionMatrix(predictions500, testData$gname)
+
+# Print the accuracy
+accuracy100 <- conf_matrix100$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy100 * 100, 2), "%", sep = ""))
+
+accuracy200 <- conf_matrix200$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy200 * 100, 2), "%", sep = ""))
+
+accuracy500 <- conf_matrix500$overall['Accuracy']
+print(paste("Accuracy: ", round(accuracy500 * 100, 2), "%", sep = ""))
+
+```
+```{r}
+# Make the prediction on Unknown Gname attacks
+Testprediction <- predict(rf_model, newdata = testDF)
+
+print(Testprediction[1:20])
+```
+```{r}
+library(pdp)
+library(pheatmap)
+
+# Accuracies for different ntree values
+accuracies <- data.frame(
+  ntree = c(100, 200, 500),
+  accuracy = c(accuracy100, accuracy200, accuracy500)
+)
+
+# Plot the accuracies
+# Line
+ggplot(accuracies, aes(x = ntree, y = accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Model Accuracy vs. Number of Trees",
+       x = "Number of Trees (ntree)",
+       y = "Accuracy") +
+  theme_minimal()
+
+#Bar
+ggplot(accuracies, aes(x = factor(ntree), y = accuracy)) +
+  geom_bar(stat = "identity", fill = "green") +
+  labs(title = "Model Accuracy vs. Number of Trees",
+       x = "Number of Trees (ntree)",
+       y = "Accuracy") +
+  theme_minimal()
+
+
+
+## Get variable importance
+importance_values <- importance(rf_model500)
+
+## Plot variable importance
+barplot(importance_values[, 1], 
+        names.arg = rownames(importance_values), 
+        las = 2, 
+        col = "skyblue", 
+        main = "Variable Importance", 
+        ylab = "Importance Score",
+        cex.names = 0.7)
+
+# Create a partial dependence plot for a specific feature
+partialPlot(rf_model500, trainData, "iyear")
+
+```
+
+
+
+
